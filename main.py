@@ -9,6 +9,7 @@ from telebot import types
 from messages import *
 from database import *
 from constants import *
+from pay import *
 
 bot = telebot.TeleBot(TOKEN, parse_mode=None)
 database = Table("sqlite.db")
@@ -36,6 +37,7 @@ def get_groups_markup():
     groups = database.get_groups_name()
     return get_reply_markup(groups)
 
+
 @bot.message_handler(regexp=Menu.main_menu)
 def send_top(message):
     set_main_menu(message)
@@ -43,10 +45,11 @@ def send_top(message):
 
 def send_songs(message, songs):
     for song in songs:
-        audio = open("./{}/{}/{}".format(FOLDER_TO_SONG, song.group_name, song.name), 'rb')
+        path = "./{}/{}/{}".format(FOLDER_TO_SONG, song.group_name, song.name)
+        audio = open(path, 'rb')
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton(Menu.call_this, callback_data=song.id), )
-        bot.send_audio(message.chat.id, audio=audio, reply_markup=markup)
+        markup.add(types.InlineKeyboardButton(Menu.call_this, callback_data=song.id))
+        bot.send_audio(message.chat.id, caption=song.description, audio=audio, reply_markup=markup)
 
 
 # def set_song()
@@ -54,6 +57,11 @@ def send_songs(message, songs):
 
 def set_main_menu(message):
     bot.send_message(message.chat.id, Menu.main_menu, reply_markup=get_reply_markup([i for i in MENU_BUTTON]))
+
+
+@bot.message_handler(commands=['admin'])
+def admin_commands(msg):
+    bot.send_message(msg.chat.id, Menu.admin_readme)
 
 
 @bot.message_handler(commands=['start'])
@@ -65,6 +73,30 @@ def welcome(message):
 def send_top(message):
     top = database.get_top_song(PRINT_TOP_N)
     send_songs(message, top)
+
+
+@bot.message_handler(
+    func=lambda message: message.from_user.id == ADMIN_ID and message.text == Menu.admin_send_message_to_all)
+def send_message(message):
+    bot.send_message(message.chat.id, Menu.send_message)
+    bot.register_next_step_handler(message, send_message1)
+
+
+def send_message1(message):
+    users = database.get_users()
+    for user in users:
+        try:
+            bot.send_message(user.id, message.text)
+        except:
+            pass
+
+
+@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and message.text == Menu.admin_add_song)
+def add_song(message):
+    markup = get_groups_markup()
+    bot.send_message(message.chat.id, Menu.choose_group, reply_markup=markup)
+    bot.register_next_step_handler(message, add_song1)
+
 
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and message.text == Menu.admin_add_song)
 def add_song(message):
@@ -87,8 +119,9 @@ def add_song2(message, group_name):
         add_path(group_name)
         with open(path, 'wb') as f:
             f.write(file.content)
-        song = Song(group_name, song_name)
+        song = Song(group_name, song_name, message.caption)
         database.add_song(song)
+        bot.send_message(message.chat.id, Menu.successfull_add)
     else:
         set_main_menu(message)
 
@@ -100,9 +133,11 @@ def get_balance(message):
 
 @bot.message_handler(func=lambda message: message.text == Menu.increase_balance)
 def add_to_balance(message):
-    url = "https://www.free-kassa.ru/merchant/cash.php?m={}&oa={}&o={}&s={}".format(FREE_CASSA_ID, 100,
-                                                                                    message.from_user.id, hashlib.md5(
-            "{}:{}:{}:{}".format(FREE_CASSA_ID, 100, SECRET_KEY, ADMIN_ID).encode()).hexdigest())
+    url = get_qiwi_link(message, database)
+
+    # url = "https://www.free-kassa.ru/merchant/cash.php?m={}&oa={}&o={}&s={}".format(FREE_CASSA_ID, 100,
+    #                                                                                 message.from_user.id, hashlib.md5(
+    #         "{}:{}:{}:{}".format(FREE_CASSA_ID, 100, SECRET_KEY, ADMIN_ID).encode()).hexdigest())
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton(Menu.free_cassa, url=url))
     bot.send_message(message.chat.id, Menu.increase_balance, reply_markup=markup)
@@ -144,9 +179,15 @@ def choose_group(message):
     bot.send_message(message.chat.id, Menu.choose_group, reply_markup=markup)
     bot.register_next_step_handler(message, print_song)
 
+
 def print_song(message):
-    songs = database.get_song_by_name(message.text)
-    send_songs(message, songs)
+    if message.text == Menu.main_menu:
+        set_main_menu(message)
+    else:
+        songs = database.get_song_by_name(message.text)
+        send_songs(message, songs)
+        bot.register_next_step_handler(message, print_song)
+
 
 if __name__ == "__main__":
     bot.polling()

@@ -29,9 +29,15 @@ class Menu:
     balance = MENU_BUTTON[3]
     faq = MENU_BUTTON[4]
     main_menu = "Главное меню"
-    admin_add_song = "add_song"
+    admin = "/admin"
+    admin_button = ["/add_song", "/send_to_all", "/get_last_payment"]
+    admin_add_song = admin_button[0]
+    admin_send_message_to_all = admin_button[1]
+    admin_get_payment = admin_button[2]
+    admin_readme = "1. {} - Добавить песню \n 2. {} - послать всем сообщение \n 3. {} - получить последние " \
+                   "оплаченные счета".format(admin_add_song, admin_send_message_to_all, admin_get_payment)
     choose_group = "Выберите группу"
-    send_song = "Пришлите песню"
+    send_song = "Пришлите песню и в описании к ней укажите описание"
     free_cassa = "Free cassa"
     call_this = "Разыграть"
     enter_number = "Введите номер на который необходимо звонить (например, 79123456789)"
@@ -39,3 +45,5 @@ class Menu:
     making_call = "Совершаем звонок, ожидайте"
     faq_text = "Это faq."
     not_recorded = "Запись не найдена, деньги будут возвращены на ваш счет"
+    successfull_add = "Аудиозапись успешно добавлена"
+    send_message = "Пришлите сообщение"
