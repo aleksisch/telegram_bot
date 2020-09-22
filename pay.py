@@ -31,7 +31,7 @@ def get_qiwi_link(message, btn: PayButton) -> str:
     to_time = int(time.time()) + EXPIRED_TIME
     expired_time = datetime.fromtimestamp(to_time).strftime(time_fmt)
     url = "https://oplata.qiwi.com/create?publicKey={}&amount={}&comment={}&lifetime={}" \
-        .format(PUBLIC_KEY_QIWI, btn[1], message.from_user.id, expired_time)
+        .format(PUBLIC_KEY_QIWI, btn.amount, message.from_user.id, expired_time)
     return url
 
 

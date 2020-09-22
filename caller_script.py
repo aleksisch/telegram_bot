@@ -19,7 +19,7 @@ class VoxImplant:
         self.api.start_scenarios(VoxImplant.RULE_ID, script_custom_data="{} {}".format(number, url),
                                  user_id=VoxImplant.USER_ID)
 
-    def get_call_record(self, number, message, bot, user, table):
+    def get_call_record(self, number, message, bot, user):
         time.sleep(120)
         FROM_DATE = datetime(2019, 1, 1, 0, 0, 0, tzinfo=pytz.utc)
         TO_DATE = datetime(2050, 1, 1, 0, 0, 0, tzinfo=pytz.utc)
@@ -34,7 +34,7 @@ class VoxImplant:
                 break
         if res == Menu.not_recorded:
             bot.send_message(message.chat.id, res)
-            user.change_balance(PRICE_TO_CALL, table)
+            user.change_balance(PRICE_TO_CALL, bot.database)
         else:
             bot.send_audio(message.chat.id, res)
 
