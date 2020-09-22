@@ -5,19 +5,30 @@ from caller_script import *
 import requests
 import hashlib
 import telebot
-from telebot import types
+from telebot import (types, TeleBot)
 from messages import *
 from database import *
 from constants import *
+import constants
 from pay import *
+from server import start_server
 
 bot = telebot.TeleBot(TOKEN, parse_mode=None)
 database = Table("sqlite.db")
-last_state = 0
 
+
+class TelegramBot(TeleBot):
+
+    def __init__(self):
+        super().__init__(self, TOKEN, parse_mode=None)
+        self.database = Table(constants.database_name)
+
+    @TeleBot.message_handler(regexp=Menu.main_menu)
+    def send_top(self, message):
+        set_main_menu(message)
 
 def add_path(name):
-    path = './songs/{}'.format(name)
+    path = './{}/{}'.format(FOLDER_TO_SONG, name)
     try:
         os.mkdir(path)
     except:
@@ -36,11 +47,6 @@ def get_reply_markup(mess):
 def get_groups_markup():
     groups = database.get_groups_name()
     return get_reply_markup(groups)
-
-
-@bot.message_handler(regexp=Menu.main_menu)
-def send_top(message):
-    set_main_menu(message)
 
 
 def send_songs(message, songs):
@@ -81,6 +87,10 @@ def send_message(message):
     bot.send_message(message.chat.id, Menu.send_message)
     bot.register_next_step_handler(message, send_message1)
 
+@bot.message_handler(
+    func=lambda message: message.from_user.id == ADMIN_ID and message.text == Menu.admin_add_to_balance_by_id_cmd)
+def change_balance():
+
 
 def send_message1(message):
     users = database.get_users()
@@ -100,6 +110,9 @@ def add_song(message):
 
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and message.text == Menu.admin_add_song)
 def add_song(message):
+    if message.text == Menu.main_menu:
+        set_main_menu()
+        return
     markup = get_groups_markup()
     bot.send_message(message.chat.id, Menu.choose_group, reply_markup=markup)
     bot.register_next_step_handler(message, add_song1)
@@ -115,15 +128,16 @@ def add_song2(message, group_name):
         file_info = bot.get_file(message.audio.file_id)
         file = requests.get('https://api.telegram.org/file/bot{0}/{1}'.format(TOKEN, file_info.file_path))
         song_name = message.audio.title
-        path = './songs/{0}/{1}'.format(group_name, song_name)
+        song_name = song_name.encode('cp1252')
+        path = './{}/{}/{}'.format(FOLDER_TO_SONG, group_name, song_name)
         add_path(group_name)
         with open(path, 'wb') as f:
             f.write(file.content)
+        print(song_name)
         song = Song(group_name, song_name, message.caption)
         database.add_song(song)
         bot.send_message(message.chat.id, Menu.successfull_add)
-    else:
-        set_main_menu(message)
+    set_main_menu(message)
 
 
 @bot.message_handler(func=lambda message: message.text == Menu.balance)
@@ -133,13 +147,14 @@ def get_balance(message):
 
 @bot.message_handler(func=lambda message: message.text == Menu.increase_balance)
 def add_to_balance(message):
-    url = get_qiwi_link(message, database)
-
-    # url = "https://www.free-kassa.ru/merchant/cash.php?m={}&oa={}&o={}&s={}".format(FREE_CASSA_ID, 100,
-    #                                                                                 message.from_user.id, hashlib.md5(
-    #         "{}:{}:{}:{}".format(FREE_CASSA_ID, 100, SECRET_KEY, ADMIN_ID).encode()).hexdigest())
+    buttons = database.get_prices()
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton(Menu.free_cassa, url=url))
+    for btn in buttons:
+        url = get_qiwi_link(message, btn)
+        markup.add(types.InlineKeyboardButton(Menu.text_to_pay.format(btn.quantity, btn.amount), url=url))
+
+    thread = Thread(target=check_pay, args=(message, database))
+    thread.start()
     bot.send_message(message.chat.id, Menu.increase_balance, reply_markup=markup)
 
 
@@ -190,4 +205,6 @@ def print_song(message):
 
 
 if __name__ == "__main__":
+    thread2 = Thread(target=start_server)
+    thread2.start()
     bot.polling()

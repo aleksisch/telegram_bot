@@ -30,15 +30,20 @@ class Menu:
     faq = MENU_BUTTON[4]
     main_menu = "Главное меню"
     admin = "/admin"
-    admin_button = ["/add_song", "/send_to_all", "/get_last_payment"]
+    admin_button = ["/add_song", "/send_to_all", "/get_last_payment", "/add_to_balance_by_id"]
     admin_add_song = admin_button[0]
     admin_send_message_to_all = admin_button[1]
     admin_get_payment = admin_button[2]
+    admin_add_to_balance_by_id = "Введите id пользователя и количество звонков, например, \n 243003920 123 \n " \
+                                 "увеличит баланс пользователя 243003920 на 123"
+    admin_add_to_balance_by_id_cmd = admin_button[3]
     admin_readme = "1. {} - Добавить песню \n 2. {} - послать всем сообщение \n 3. {} - получить последние " \
-                   "оплаченные счета".format(admin_add_song, admin_send_message_to_all, admin_get_payment)
+                   "4. {} - изменить баланс по id" \
+                   "оплаченные счета".format(admin_add_song, admin_send_message_to_all, admin_get_payment,
+                                             admin_add_to_balance_by_id_cmd)
     choose_group = "Выберите группу"
     send_song = "Пришлите песню и в описании к ней укажите описание"
-    free_cassa = "Free cassa"
+    qiwi = "Qiwi"
     call_this = "Разыграть"
     enter_number = "Введите номер на который необходимо звонить (например, 79123456789)"
     not_enough_money = "Похоже у вас недостаточно денег"
@@ -47,3 +52,5 @@ class Menu:
     not_recorded = "Запись не найдена, деньги будут возвращены на ваш счет"
     successfull_add = "Аудиозапись успешно добавлена"
     send_message = "Пришлите сообщение"
+    text_to_pay = 'Купить {} звонок за {}'
+    default_prices_to_pay = [(1, 35), (3, 99), (10, 249), (100, 1499)]

@@ -3,7 +3,8 @@ import os
 from os.path import join
 from caller_script import VoxImplant
 from constants import *
-
+from messages import Menu
+import urllib.request
 vox = VoxImplant()
 
 
@@ -21,15 +22,18 @@ class User:
         table.update_user(self)
 
     def check_for_call(self):
-        if self.balance - PRICE_TO_CALL < 0:
+        if self.balance - PRICE_TO_CALL > 0:
             return False
         else:
             return True
 
     def make_call(self, number, song_id, table):
-        song = table.get_user(self.id)
+        song = table.get_song(song_id)
         song.add_number_calls(table)
-        vox.call(number, "https://{}/{}/{}/{}".format(SERVER_IP, FOLDER_TO_SONG, song.group_name, song.name))
+        tmp = urllib.request.pathname2url
+        url = "http://{}/{}/{}/{}".format(SERVER_IP, tmp(FOLDER_TO_SONG), tmp(song.group_name), tmp(song.name))
+        print(url)
+        # vox.call(number, url)
         self.change_balance(-1*PRICE_TO_CALL, table)
         return True
 
@@ -50,6 +54,11 @@ class Song:
         self.number_calls += 1
         table.update_song(self)
 
+class PayButton:
+
+    def __init__(self, quantity:int, amount:int):
+        self.amount = amount
+        self.quantity = quantity
 
 class Table:
 
@@ -116,7 +125,7 @@ class Table:
         self.cursor.execute(sql, (song.number_calls, song.id))
         self.conn.commit()
 
-    def get_user(self, id):
+    def get_user(self, id) -> User:
         self.cursor.execute('SELECT * FROM Users where id = ?', (id,))
         tmp = self.cursor.fetchall()
         if len(tmp) == 0:
@@ -135,21 +144,29 @@ class Table:
         else:
             return True
 
-    def get_groups_name(self):
+    def get_groups_name(self) -> str:
         self.cursor.execute('SELECT * FROM Groups')
         return [a[0] for a in self.cursor.fetchall()]
 
-    def get_top_song(self, n=PRINT_TOP_N):
+    def get_top_song(self, n=PRINT_TOP_N) -> List[Song]:
         self.cursor.execute('SELECT * FROM Songs ORDER BY number_calls LIMIT ?', (n,))
         return [Song(a[0], a[1], a[2], a[3], a[4]) for a in self.cursor.fetchall()]
 
-    def get_song_by_name(self, song_name):
+    def get_song_by_name(self, song_name) -> List[Song]:
         self.cursor.execute('SELECT * FROM Songs WHERE group_name = ?', (song_name,))
         return [Song(a[0], a[1], a[2], a[3], a[4]) for a in self.cursor.fetchall()]
 
-    def get_users(self):
+    def get_song(self, id) -> List[Song]:
+        self.cursor.execute('SELECT * FROM Songs WHERE id = ?', (id,))
+        return [Song(a[0], a[1], a[2], a[3], a[4]) for a in self.cursor.fetchall()][0]
+
+    def get_users(self) -> List[User]:
         self.cursor.execute('SELECT * FROM Users')
         return [User(a[0], a[1]) for a in self.cursor.fetchall()]
+
+    def get_prices(self) -> List[PayButton]:
+        """return list of buttons where buttons[i][0] - number of calls, numbers[i][1] price for this number"""
+        return [PayButton(i[0], i[1]) for i in Menu.default_prices_to_pay]
 
 if __name__ == '__main__':
     a = User(1, 1)
