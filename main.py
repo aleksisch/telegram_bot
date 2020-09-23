@@ -22,12 +22,15 @@ from server import start_server
 class Markup:
     @staticmethod
     def get_reply_markup(message, is_add_menu=True):
-        markup = types.ReplyKeyboardMarkup(row_width=2)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
         if isinstance(message, typing.List):
-            for msg in message:
-                markup.add(types.KeyboardButton(msg))
+            for i in range(0, len(message), 2):
+                if (i + 1 == len(message)):
+                    markup.row(types.KeyboardButton(message[i]))
+                    break
+                markup.row(types.KeyboardButton(message[i]), types.KeyboardButton(message[i + 1]))
         if isinstance(message, str):
-            markup.add(types.KeyboardButton(message))
+            markup.add(types.KeyboardButton(message), row_width=2)
         if is_add_menu is True:
             markup.add(types.KeyboardButton(Menu.main_menu))
         return markup

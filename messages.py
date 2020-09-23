@@ -69,5 +69,5 @@ class Menu:
     successfull_add = "Успешно добавлено"
     send_message = "Пришлите сообщение"
     text_to_pay = 'Купить {} звонок за {}руб.'
-    default_prices_to_pay = [(1, 10), (3, 99), (10, 249), (100, 1499)]
+    default_prices_to_pay = [(1, 35), (3, 99), (10, 249), (100, 1499)]
     download = "Загрузить"
