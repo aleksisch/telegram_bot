@@ -3,6 +3,7 @@ import re
 from threading import Thread
 
 import typing
+import shutil
 
 from caller_script import *
 import requests
@@ -20,7 +21,7 @@ from server import start_server
 
 class Markup:
     @staticmethod
-    def get_reply_markup(message, is_add_menu = True):
+    def get_reply_markup(message, is_add_menu=True):
         markup = types.ReplyKeyboardMarkup(row_width=2)
         if isinstance(message, typing.List):
             for msg in message:
@@ -53,6 +54,10 @@ def check_group(text, song_groups):
         if text == el:
             return True
     return False
+
+
+def get_category_path(group, category):
+    return './{}/{}/{}/'.format(FOLDER_TO_SONG, group, category)
 
 
 class TelegramBot(TeleBot):
@@ -129,10 +134,14 @@ class TelegramBot(TeleBot):
             self.register_next_step_handler(msg, self.admin_send_all1)
 
         @self.message_handler(func=lambda msg: self.is_from_admin(msg, Menu.admin_add_song))
-        def add_song(msg):
+        def admin_add_song(msg):
             markup = self.get_groups_markup()
             self.send_message(msg.chat.id, Menu.choose_group, reply_markup=markup)
             self.register_next_step_handler(msg, self.add_song1)
+
+        @self.message_handler(func=lambda msg: self.is_from_admin(msg, Menu.admin_delete_category))
+        def admin_delete_category(msg):
+            self.get_group_category(msg, self.delete_category)
 
         @self.message_handler(regexp=Menu.all_song)
         def print_all_song(msg):
@@ -145,6 +154,21 @@ class TelegramBot(TeleBot):
     def is_from_admin(self, msg, text):
         return str(msg.from_user.id) == str(self.admin_id) and msg.text == text
 
+    @decorator_main_menu
+    def get_group_category(self, msg, callback):
+        self.send_message(msg.chat.id, Menu.choose_group, reply_markup=self.get_groups_markup())
+        self.register_next_step_handler(msg, lambda m: self.get_category(m, callback))
+
+    @decorator_main_menu
+    def get_category(self, msg, callback):
+        group_name = msg.text
+        markup = Markup.get_reply_markup(self.database.get_category_name(group_name))
+        self.send_message(msg.chat.id, Menu.choose_category, reply_markup=markup)
+        self.register_next_step_handler(msg, lambda m: self.finish_state(m, group_name, callback))
+
+    @decorator_main_menu
+    def finish_state(self, msg, group_name, callback):
+        callback(msg, group_name, msg.text)
 
     @decorator_main_menu
     def admin_send_all1(self, msg):
@@ -203,7 +227,8 @@ class TelegramBot(TeleBot):
             file = requests.get('https://api.telegram.org/file/bot{0}/{1}'.format(TOKEN, file_info.file_path))
             song_name = message.audio.title
             song_name = song_name
-            path = './{}/{}/{}/'.format(FOLDER_TO_SONG, group_name, category_name)
+
+            path = get_category_path(group_name, category_name)
             self.add_path(path)
             with open(path + song_name, 'wb') as f:
                 f.write(file.content)
@@ -234,10 +259,8 @@ class TelegramBot(TeleBot):
             self.set_main_menu(message)
 
     def add_path(self, path):
-        try:
-            os.mkdir(path)
-        except:
-            pass
+        if not os.path.isdir(path):
+            os.makedirs(path)
 
     def get_groups_markup(self):
         groups = self.database.get_groups_name()
@@ -253,6 +276,21 @@ class TelegramBot(TeleBot):
         songs = self.database.get_song_by_name(msg.text)
         self.send_songs(msg, songs)
         # self.register_next_step_handler(msg, self.print_song)
+
+    def delete_category(self, msg, group, category):
+        self.database.delete_category(group, category)
+        shutil.rmtree(get_category_path(group, category))
+        self.set_main_menu(msg)
+
+
+class ChooseCategory:
+
+    @decorator_main_menu
+    def select_category(self, msg, group_name):
+        category_name = msg.text
+        self.send_songs(msg, self.database.get_songs(group_name, category_name))
+        # self.send_message(msg.chat.id, Menu.choose_song, reply_markup=markup)
+        # self.register_next_step_handler(msg, self.select_category)
 
 
 if __name__ == "__main__":

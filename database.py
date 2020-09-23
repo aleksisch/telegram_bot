@@ -203,6 +203,11 @@ class Table:
         self.cursor.execute(sql, (id,))
         self.conn.commit()
 
+    def delete_category(self, group, category):
+        sql = 'DELETE FROM Songs WHERE group_name = ? and category_name = ?'
+        self.cursor.execute(sql, (group, category))
+        self.conn.commit()
+
 
 if __name__ == '__main__':
     a = User(1, 1)

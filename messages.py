@@ -43,20 +43,20 @@ class Menu:
     Все операторы 🇺🇦"""
     main_menu = "Главное меню"
     admin = "/admin"
-    admin_button = ["/add_song", "/send_to_all", "/get_last_payment", "/add_to_balance_by_id"]
+    admin_button = ["/add_song", "/send_to_all", "/get_last_payment", "/add_to_balance_by_id", "/admin_delete_category"]
     admin_add_song = admin_button[0]
     admin_send_message_to_all = admin_button[1]
     admin_get_payment = admin_button[2]
     admin_add_to_balance_by_id = "Введите id пользователя и количество звонков, например, \n 243003920 123 \n " \
                                  "увеличит баланс пользователя 243003920 на 123"
     admin_add_to_balance_by_id_cmd = admin_button[3]
+    admin_delete_category = admin_button[4]
+
     admin_readme = "1. {} - Добавить песню \n " \
                    "2. {} - послать всем сообщение \n " \
                    "3. {} - получить последние оплаченные счета\n" \
-                   "4. {} - изменить баланс по id".format(admin_add_song,
-                                                          admin_send_message_to_all,
-                                                          admin_get_payment,
-                                                          admin_add_to_balance_by_id_cmd)
+                   "4. {} - изменить баланс по id\n" \
+                   "5. {} - удалить категорию\n".format(*admin_button)
     choose_group = "Выберите группу"
     choose_category = "Выберите категорию"
     send_song = "Пришлите песню и в описании к ней укажите описание"
@@ -71,5 +71,3 @@ class Menu:
     text_to_pay = 'Купить {} звонок за {}руб.'
     default_prices_to_pay = [(1, 10), (3, 99), (10, 249), (100, 1499)]
     download = "Загрузить"
-
-
