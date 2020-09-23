@@ -7,7 +7,8 @@ from constants import *
 from database import *
 
 
-def check_pay(message, table: Table):
+def check_pay(message, telegram_bot):
+    table = telegram_bot.database
     cur_time = int(time.time())
     url = "https://edge.qiwi.com/payment-history/v2/persons/{}/payments?rows=50".format(YOUR_QIWI_NUM)
     headers = {'Accept': 'application/json', 'Authorization': "Bearer " + TOKEN_QIWI,
@@ -22,6 +23,9 @@ def check_pay(message, table: Table):
                 for price in prices:
                     if price.amount == amount:
                         user.change_balance(price.quantity, table)
+                        telegram_bot.send_message(message.chat.id, Menu.added_to_balance
+                                                  .format(price.quantity, user.balance))
+                        telegram_bot.send_message(ADMIN_ID, Menu.admin_added_to_balance.format(user.id, price.quantity))
                         table.add_qiwi_id(pay['txnId'])
         time.sleep(5)
 

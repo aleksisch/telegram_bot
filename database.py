@@ -22,7 +22,7 @@ class User:
         table.update_user(self)
 
     def check_for_call(self):
-        if self.balance - PRICE_TO_CALL > 0:
+        if self.balance - PRICE_TO_CALL < 0:
             return False
         else:
             return True
@@ -33,8 +33,8 @@ class User:
         tmp = urllib.request.pathname2url
         url = "http://{}/{}/{}/{}".format(SERVER_IP, tmp(FOLDER_TO_SONG), tmp(song.group_name), tmp(song.name))
         print(url)
-        # vox.call(number, url)
-        self.change_balance(-1*PRICE_TO_CALL, table)
+        vox.call(number, url)
+        self.change_balance(-1, table)
         return True
 
     def get_tuple(self):
@@ -66,6 +66,13 @@ class Song:
                 self.number_calls,
                 self.id)
 
+    def get_path(self):
+        return "./{}/{}/{}/{}".format(FOLDER_TO_SONG, self.group_name, self.category_name, self.name)
+
+    def remove_song(self, table):
+        os.remove(self.get_path())
+        table.remove_song(self.id)
+
 
 class PayButton:
 
@@ -81,20 +88,21 @@ class Table:
         path = "./{}/".format(FOLDER_TO_SONG)
         extra_len = 3 + len(FOLDER_TO_SONG)
 
+        self.cursor.execute('DROP TABLE IF EXISTS Songs')
         self.cursor.execute('CREATE TABLE IF NOT EXISTS Songs '
                             '(group_name text, category_name text, song_name  text, description text,'
                             ' number_calls int, id int, UNIQUE(group_name, category_name, song_name))')
 
         only_folder = [f for f in os.listdir(path) if not os.path.isfile(join(path, f))]
-        for folder in only_folder:
-            group_name = folder[len(path):]
-            only_subfolder = [f for f in os.listdir(folder) if not os.path.isfile(join(folder, f))]
-            for subfolder in only_subfolder:
-                category_name = subfolder[len(folder):]
-                only_files = [f for f in os.listdir(subfolder) if os.path.isfile(join(subfolder, f))]
-                for file in only_files:
-                    file_name = file[len(subfolder)]
-                    song = Song(group_name, category_name, file_name, "")
+        for group in only_folder:
+            path1 = path + group + '/'
+            all_category = [f for f in os.listdir(path1) if not os.path.isfile(join(path1, f))]
+            for category in all_category:
+                path2 = path1 + category + '/'
+                files = [f for f in os.listdir(path2) if os.path.isfile(join(path2, f))]
+                for file in files:
+                    print(group, category, file)
+                    song = Song(group, category, file, "")
                     self.add_song(song)
         self.cursor.execute('CREATE TABLE IF NOT EXISTS Users (id int UNIQUE, balance int)')
         self.cursor.execute('CREATE TABLE IF NOT EXISTS QiwiUsedId (id int UNIQUE)')
@@ -146,24 +154,20 @@ class Table:
             res = User(tmp[0], tmp[1])
         return res
 
-    def check_group(self, name):
-        self.cursor.execute('SELECT * FROM Groups where group_name = ?', (name,))
-        tmp = self.cursor.fetchall()
-        if len(tmp) == 0:
-            return False
-        else:
-            return True
-
     def get_groups_name(self) -> List[str]:
-        self.cursor.execute('SELECT group_name FROM Songs')
-        return self.cursor.fetchall()
+        self.cursor.execute('SELECT DISTINCT group_name FROM Songs')
+        return [item[0] for item in self.cursor.fetchall()]
 
     def get_category_name(self, group_name: str):
-        self.cursor.execute('SELECT category_name FROM Songs where group_name = ?', (group_name,))
+        self.cursor.execute('SELECT DISTINCT category_name FROM Songs where group_name = ?', (group_name,))
         return [item[0] for item in self.cursor.fetchall()]
 
     def get_top_song(self, n=PRINT_TOP_N) -> List[Song]:
         self.cursor.execute('SELECT * FROM Songs ORDER BY number_calls LIMIT ?', (n,))
+        return [Song(*item) for item in self.cursor.fetchall()]
+
+    def get_all_songs(self) -> List[Song]:
+        self.cursor.execute('SELECT * FROM Songs ORDER BY number_calls')
         return [Song(*item) for item in self.cursor.fetchall()]
 
     def get_song_by_name(self, song_name) -> List[Song]:
@@ -188,9 +192,14 @@ class Table:
     def get_start_msg(self) ->str:
         return Menu.start_msg
 
-    def get_all_song(self, group: str, category: str) -> List[Song]:
+    def get_songs(self, group: str, category: str) -> List[Song]:
         self.cursor.execute('SELECT * FROM Songs WHERE group_name = ? and category_name = ?', (group, category))
         return [Song(*item) for item in self.cursor.fetchall()]
+
+    def remove_song(self, id):
+        sql = 'DELETE FROM Songs WHERE id = ?'
+        self.cursor.execute(sql, (id,))
+        self.conn.commit()
 
 
 if __name__ == '__main__':
