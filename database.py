@@ -31,7 +31,8 @@ class User:
         song = table.get_song(song_id)
         song.add_number_calls(table)
         tmp = urllib.request.pathname2url
-        url = "http://{}/{}/{}/{}".format(SERVER_IP, tmp(FOLDER_TO_SONG), tmp(song.group_name), tmp(song.name))
+        url = "http://{}/{}/{}/{}/{}".format(SERVER_IP, tmp(FOLDER_TO_SONG), tmp(song.group_name),
+                                             tmp(song.category_name), tmp(song.name))
         print(url)
         vox.call(number, url)
         self.change_balance(-1, table)
@@ -155,8 +156,9 @@ class Table:
         return res
 
     def get_groups_name(self) -> List[str]:
-        self.cursor.execute('SELECT DISTINCT group_name FROM Songs')
-        return [item[0] for item in self.cursor.fetchall()]
+        return Menu.song_groups
+        # self.cursor.execute('SELECT DISTINCT group_name FROM Songs')
+        # return [item[0] for item in self.cursor.fetchall()]
 
     def get_category_name(self, group_name: str):
         self.cursor.execute('SELECT DISTINCT category_name FROM Songs where group_name = ?', (group_name,))
