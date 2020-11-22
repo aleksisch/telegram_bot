@@ -1,4 +1,5 @@
-__pycache__
 .git
 .idea
 credentials_voximplant.json
+.idea
+__pycache__
