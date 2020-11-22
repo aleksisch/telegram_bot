@@ -26,7 +26,6 @@ class VoxImplant:
         ret = self.api.get_call_history(from_date=FROM_DATE, to_date=TO_DATE,
                                         with_records=True, desc_order=True, count=10)
         res = Menu.not_recorded
-        print(ret)
         for item in ret["result"]:
             if len(item['custom_data'].split()) != 0 and item['custom_data'].split()[0] == str(number):
                 if len(item["records"]) != 0:

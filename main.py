@@ -1,5 +1,6 @@
 #!/usr/bin/python3.7
 import re
+import sys
 from threading import Thread
 
 import typing
@@ -17,7 +18,16 @@ from constants import *
 import constants
 from pay import *
 from server import start_server
+import logging
 
+logging.basicConfig(filename='error.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
+
+def isint(x):
+    try:
+        int(x)
+        return True
+    except:
+        return False
 
 class Markup:
     @staticmethod
@@ -32,7 +42,7 @@ class Markup:
         if isinstance(message, str):
             markup.add(types.KeyboardButton(message), row_width=2)
         if is_add_menu is True:
-            markup.add(types.KeyboardButton(Menu.main_menu))
+            markup.add(types.KeyboardButton(Menu.main_menu_button))
         return markup
 
     @staticmethod
@@ -44,7 +54,7 @@ class Markup:
 
 def decorator_main_menu(func):
     def wrapper(self, msg, *args):
-        if msg.text == Menu.main_menu:
+        if msg.text == Menu.main_menu_button:
             self.set_main_menu(msg)
         else:
             func(self, msg, *args)
@@ -63,10 +73,17 @@ def get_category_path(group, category):
     return './{}/{}/{}/'.format(FOLDER_TO_SONG, group, category)
 
 
+def is_from_admin(msg, text):
+    for admin in ADMIN_ID:
+        if str(msg.from_user.id) == str(admin) and msg.text == text:
+            return True
+    return False
+
+
 class TelegramBot(TeleBot):
 
     def start(self):
-        self.polling()
+        self.polling(none_stop=True)
 
     def __init__(self):
         super().__init__(TOKEN, parse_mode=None)
@@ -74,17 +91,24 @@ class TelegramBot(TeleBot):
         self.admin_id = self.database.get_admin_id()
         self.vox = VoxImplant()
 
-        @self.message_handler(regexp=Menu.main_menu)
+        @self.message_handler(regexp=Menu.main_menu_button)
         def send_top(message):
             self.set_main_menu(message)
 
-        @self.message_handler(commands=['admin'])
+        @self.message_handler(func=lambda msg: is_from_admin(msg, '/admin'))
         def admin_commands(msg):
             self.send_message(msg.chat.id, Menu.admin_readme)
+
+        @self.message_handler(func=lambda msg: is_from_admin(msg, Menu.admin_get_number_users))
+        def get_admin_users(message):
+            users = self.database.get_users()
+            self.send_message(message.chat.id, len(users))
 
         @self.message_handler(commands=['start'])
         def welcome(message):
             self.send_message(message.chat.id, self.database.get_start_msg())
+            user = User(message.from_user.id, DEFAULT_BALANCE)
+            user.add_to_db(self.database)
             self.set_main_menu(message)
 
         @self.message_handler(regexp=Menu.top)
@@ -97,7 +121,12 @@ class TelegramBot(TeleBot):
             self.send_message(message.chat.id,
                               "Ваш баланс {}".format(self.database.get_user(message.from_user.id).balance))
 
-        @self.message_handler(func=lambda msg: msg.text == Menu.increase_balance)
+        @self.message_handler(func=lambda msg: msg.text == Menu.help)
+        def help_message(message):
+            self.send_message(message.chat.id, Menu.help_message)
+
+            
+        @self.message_handler(regexp=Menu.increase_balance)
         def add_to_balance(message):
             buttons = self.database.get_prices()
             markup = types.InlineKeyboardMarkup()
@@ -124,25 +153,26 @@ class TelegramBot(TeleBot):
                 self.register_next_step_handler(call.message, lambda m: self.make_call(m, call.data))
             else:
                 self.send_message(call.message.chat.id, Menu.not_enough_money)
+                call.message.from_user.id = call.message.chat.id
                 add_to_balance(call.message)
 
-        @self.message_handler(func=lambda msg: self.is_from_admin(msg, Menu.admin_add_to_balance_by_id_cmd))
+        @self.message_handler(func=lambda msg: is_from_admin(msg, Menu.admin_add_to_balance_by_id_cmd))
         def admin_add_to_balance(msg):
             self.send_message(msg.chat.id, Menu.admin_add_to_balance_by_id)
             self.register_next_step_handler(msg, self.admin_add_to_balance1)
 
-        @self.message_handler(func=lambda msg: self.is_from_admin(msg, Menu.admin_send_message_to_all))
+        @self.message_handler(func=lambda msg: is_from_admin(msg, Menu.admin_send_message_to_all))
         def admin_send_all(msg):
             self.send_message(msg.chat.id, Menu.send_message)
             self.register_next_step_handler(msg, self.admin_send_all1)
 
-        @self.message_handler(func=lambda msg: self.is_from_admin(msg, Menu.admin_add_song))
+        @self.message_handler(func=lambda msg: is_from_admin(msg, Menu.admin_add_song))
         def admin_add_song(msg):
             markup = self.get_groups_markup()
             self.send_message(msg.chat.id, Menu.choose_group, reply_markup=markup)
             self.register_next_step_handler(msg, self.add_song1)
 
-        @self.message_handler(func=lambda msg: self.is_from_admin(msg, Menu.admin_delete_category))
+        @self.message_handler(func=lambda msg: is_from_admin(msg, Menu.admin_delete_category))
         def admin_delete_category(msg):
             self.get_group_category(msg, self.delete_category)
 
@@ -153,9 +183,6 @@ class TelegramBot(TeleBot):
             self.send_message(msg.chat.id, Menu.get_next_songs.format(PRINT_NUMBER_SONGS),
                               reply_markup=Markup.get_reply_markup(Menu.download))
             self.register_next_step_handler(msg, lambda m: self.get_next_song(m, songs[PRINT_NUMBER_SONGS:]))
-
-    def is_from_admin(self, msg, text):
-        return str(msg.from_user.id) == str(self.admin_id) and msg.text == text
 
     @decorator_main_menu
     def get_group_category(self, msg, callback):
@@ -187,6 +214,7 @@ class TelegramBot(TeleBot):
         if len(songs) == 0:
             self.send_message(msg.chat.id, Menu.all_songs_printed)
             self.set_main_menu(msg)
+            return
         self.send_songs(msg, songs[:PRINT_NUMBER_SONGS])
         self.register_next_step_handler(msg, lambda m: self.get_next_song(m, songs[PRINT_NUMBER_SONGS:]))
 
@@ -194,22 +222,21 @@ class TelegramBot(TeleBot):
     def select_category(self, msg, group_name):
         category_name = msg.text
         self.send_songs(msg, self.database.get_songs(group_name, category_name))
-        # self.send_message(msg.chat.id, Menu.choose_song, reply_markup=markup)
-        # self.register_next_step_handler(msg, self.select_category)
+        self.register_next_step_handler(msg, lambda m: self.select_category(m, group_name))
 
     @decorator_main_menu
     def admin_add_to_balance1(self, msg):
         text = msg.text.split()
-        if len(text) == 2 and text[0].isdigit() and text[1].isdigit():
+        if len(text) == 2 and text[0].isdigit() and isint(text[1]):
             cur_id = int(text[0])
             num_change = int(text[1])
             user = self.database.get_user(cur_id)
             user.change_balance(num_change, self.database)
-            self.send_message(msg.chat.id, Menu.successfull_add)
+            self.send_message(msg.chat.id, Menu.successfull_add.format(str(num_change), user.balance))
         self.set_main_menu(msg)
 
     def set_main_menu(self, message):
-        self.send_message(message.chat.id, Menu.main_menu,
+        self.send_message(message.chat.id, Menu.main_menu_text,
                           reply_markup=Markup.get_reply_markup(MENU_BUTTON, False))
 
     @decorator_main_menu
@@ -271,14 +298,7 @@ class TelegramBot(TeleBot):
 
     def get_category_markup(self, group):
         category = self.database.get_category_name(group)
-        print(category)
         return Markup.get_reply_markup(category)
-
-    @decorator_main_menu
-    def print_song(self, msg):
-        songs = self.database.get_song_by_name(msg.text)
-        self.send_songs(msg, songs)
-        # self.register_next_step_handler(msg, self.print_song)
 
     def delete_category(self, msg, group, category):
         self.database.delete_category(group, category)
@@ -286,18 +306,11 @@ class TelegramBot(TeleBot):
         self.set_main_menu(msg)
 
 
-class ChooseCategory:
-
-    @decorator_main_menu
-    def select_category(self, msg, group_name):
-        category_name = msg.text
-        self.send_songs(msg, self.database.get_songs(group_name, category_name))
-        # self.send_message(msg.chat.id, Menu.choose_song, reply_markup=markup)
-        # self.register_next_step_handler(msg, self.select_category)
-
-
 if __name__ == "__main__":
     thread2 = Thread(target=start_server)
     thread2.start()
     bot = TelegramBot()
+    #logger = telebot.logger
+    #telebot.logger.setLevel(logging.DEBUG)
     bot.start()
+

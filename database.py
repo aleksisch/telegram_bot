@@ -1,12 +1,13 @@
-import sqlite3
-import os
+import sqlite3, os
 from os.path import join
 from caller_script import VoxImplant
 from constants import *
 from messages import Menu
 import urllib.request
-vox = VoxImplant()
+import threading
+lock = threading.Lock()
 
+vox = VoxImplant()
 
 class User:
 
@@ -31,20 +32,19 @@ class User:
         song = table.get_song(song_id)
         song.add_number_calls(table)
         tmp = urllib.request.pathname2url
-        url = "http://{}/{}/{}/{}/{}".format(SERVER_IP, tmp(FOLDER_TO_SONG), tmp(song.group_name),
-                                             tmp(song.category_name), tmp(song.name))
-        print(url)
+        url = 'http://{}/{}/{}/{}'.format(SERVER_IP, tmp(song.group_name), tmp(song.category_name), tmp(song.name))
         vox.call(number, url)
         self.change_balance(-1, table)
         return True
 
     def get_tuple(self):
-        return self.balance, self.id
+        return (
+         self.balance, self.id)
 
 
 class Song:
 
-    def __init__(self, group_name, category_name, name, description = "", number_calls=0, id=0):
+    def __init__(self, group_name, category_name, name, description='', number_calls=0, id=0):
         self.group_name = group_name
         self.category_name = category_name
         self.number_calls = number_calls
@@ -52,49 +52,47 @@ class Song:
         self.id = id
         self.description = description
 
-    def update_calls(self, table):
-        table.update_song(self)
-
     def add_number_calls(self, table):
         self.number_calls += 1
         table.update_song(self)
 
     def get_tuple(self):
-        return (self.group_name,
-                self.category_name,
-                self.name,
-                self.description,
-                self.number_calls,
-                self.id)
+        return (
+         self.group_name,
+         self.category_name,
+         self.name,
+         self.description,
+         self.number_calls,
+         self.id)
 
     def get_path(self):
-        return "./{}/{}/{}/{}".format(FOLDER_TO_SONG, self.group_name, self.category_name, self.name)
+        return './{}/{}/{}/{}'.format(FOLDER_TO_SONG, self.group_name, self.category_name, self.name)
 
     def remove_song(self, table):
         os.remove(self.get_path())
-        table.remove_song(self.id)
+        table.remove_song(self)
+
+    def __eq__(self, other):
+        return self.id == other.id and self.name == other.name
 
 
 class PayButton:
 
-    def __init__(self, quantity:int, amount:int):
+    def __init__(self, quantity: int, amount: int):
         self.amount = amount
         self.quantity = quantity
+
 
 class Table:
 
     def __init__(self, filename='sqlite.db'):
         self.conn = sqlite3.connect(filename, check_same_thread=False)
         self.cursor = self.conn.cursor()
-        path = "./{}/".format(FOLDER_TO_SONG)
+        path = './{}/'.format(FOLDER_TO_SONG)
         extra_len = 3 + len(FOLDER_TO_SONG)
-
-        self.cursor.execute('DROP TABLE IF EXISTS Songs')
-        self.cursor.execute('CREATE TABLE IF NOT EXISTS Songs '
-                            '(group_name text, category_name text, song_name  text, description text,'
-                            ' number_calls int, id int, UNIQUE(group_name, category_name, song_name))')
-
+        self.cursor.execute('CREATE TABLE IF NOT EXISTS Songs (group_name text, category_name text, song_name  text, description text, number_calls int, id int, UNIQUE(id))')
         only_folder = [f for f in os.listdir(path) if not os.path.isfile(join(path, f))]
+        all_songs = []
         for group in only_folder:
             path1 = path + group + '/'
             all_category = [f for f in os.listdir(path1) if not os.path.isfile(join(path1, f))]
@@ -102,54 +100,81 @@ class Table:
                 path2 = path1 + category + '/'
                 files = [f for f in os.listdir(path2) if os.path.isfile(join(path2, f))]
                 for file in files:
-                    print(group, category, file)
-                    song = Song(group, category, file, "")
-                    self.add_song(song)
+                    song = self.get_song_by_name(file)
+                    if len(song) != 0:
+                        song = song[0]
+                        song.group_name = group
+                        song.category_name = category
+                        self.update_song(song)
+                    else:
+                        song = Song(group, category, file, '')
+                        self.add_song(song)
+                        print('there2')
+#                    print(group, category, file)
+                    all_songs.append(song)
+
+        database_songs = self.get_all_songs()
+        for database_song in database_songs:
+            flag = False
+            for song in all_songs:
+                if song == database_song:
+                    flag = True
+
+            if flag is False:
+                self.remove_song(database_song)
+                print('there3')
+
         self.cursor.execute('CREATE TABLE IF NOT EXISTS Users (id int UNIQUE, balance int)')
         self.cursor.execute('CREATE TABLE IF NOT EXISTS QiwiUsedId (id int UNIQUE)')
         self.conn.commit()
 
     def add_qiwi_id(self, id):
-        self.cursor.execute('INSERT OR IGNORE INTO QiwiUsedId(id) VALUES(?)', (id,))
-        self.conn.commit()
+        with lock:
+            self.cursor.execute('INSERT OR IGNORE INTO QiwiUsedId(id) VALUES(?)', (id,))
+            self.conn.commit()
 
     def check_qiwi_id(self, id):
-        self.cursor.execute("SELECT * FROM QiwiUsedId where id = ?", (id,))
-        tmp = self.cursor.fetchall()
-        if len(tmp) == 0:
-            return False
-        else:
-            return True
-
+        with lock:
+            self.cursor.execute('SELECT * FROM QiwiUsedId where id = ?', (id,))
+            tmp = self.cursor.fetchall()
+            if len(tmp) == 0:
+                return False
+            else:
+                return True
 
     def add_user(self, user: User):
-        self.cursor.execute('INSERT OR IGNORE INTO Users(id, balance) VALUES(?, ?)', (user.id, user.balance))
-        self.conn.commit()
+        with lock:
+            self.cursor.execute('INSERT OR IGNORE INTO Users(id, balance) VALUES(?, ?)', (user.id, user.balance))
+            self.conn.commit()
 
     def add_song(self, song: Song):
-        len_song = self.cursor.execute('select count(*) from Songs').fetchall()[0][0]
-        song.id = len_song + 1
-        self.cursor.execute('INSERT OR IGNORE INTO Songs(group_name, category_name, song_name, description,'
-                            ' number_calls, id) VALUES(?, ?, ?, ?, ?, ?)', song.get_tuple())
-        self.conn.commit()
+        with lock:
+            len_song = self.cursor.execute('select count(*) from Songs').fetchall()[0][0]
+            song.id = len_song + 1
+            self.cursor.execute('INSERT OR IGNORE INTO Songs(group_name, category_name, song_name, description, number_calls, id) VALUES(?, ?, ?, ?, ?, ?)', song.get_tuple())
+            self.conn.commit()
         return True
 
     def update_user(self, user: User):
-        sql = 'UPDATE Users SET balance = ? WHERE id = ?'
-        self.cursor.execute(sql, user.get_tuple())
-        self.conn.commit()
+        print(user.id, user.balance)
+        with lock:
+            sql = 'UPDATE Users SET balance = ? WHERE id = ?'
+            self.cursor.execute(sql, user.get_tuple())
+            self.conn.commit()
 
     def update_song(self, song: Song):
-        sql = 'UPDATE Songs SET number_calls = ? WHERE id = ?'
-        self.cursor.execute(sql, (song.number_calls, song.id))
-        self.conn.commit()
+        with lock:
+            sql = 'UPDATE Songs SET group_name = ?, category_name = ?, number_calls = ? WHERE id = ?'
+            self.cursor.execute(sql, (song.group_name, song.category_name, song.number_calls, song.id))
+            self.conn.commit()
 
     def get_user(self, id) -> User:
-        self.cursor.execute('SELECT * FROM Users where id = ?', (id,))
-        tmp = self.cursor.fetchall()
+        with lock:
+            self.cursor.execute('SELECT * FROM Users where id = ?', (id,))
+            tmp = self.cursor.fetchall()
         if len(tmp) == 0:
-            self.add_user(User(id))
-            res = User(id, 0)
+            res = User(id, DEFAULT_BALANCE)
+            self.add_user(res)
         else:
             tmp = tmp[0]
             res = User(tmp[0], tmp[1])
@@ -157,32 +182,36 @@ class Table:
 
     def get_groups_name(self) -> List[str]:
         return Menu.song_groups
-        # self.cursor.execute('SELECT DISTINCT group_name FROM Songs')
-        # return [item[0] for item in self.cursor.fetchall()]
 
     def get_category_name(self, group_name: str):
-        self.cursor.execute('SELECT DISTINCT category_name FROM Songs where group_name = ?', (group_name,))
-        return [item[0] for item in self.cursor.fetchall()]
+        with lock:
+            self.cursor.execute('SELECT DISTINCT category_name FROM Songs where group_name = ?', (group_name,))
+            return [item[0] for item in self.cursor.fetchall()]
 
     def get_top_song(self, n=PRINT_TOP_N) -> List[Song]:
-        self.cursor.execute('SELECT * FROM Songs ORDER BY number_calls LIMIT ?', (n,))
-        return [Song(*item) for item in self.cursor.fetchall()]
+        with lock:
+            self.cursor.execute('SELECT * FROM Songs ORDER BY number_calls LIMIT ?', (n,))
+            return [Song(*item) for item in self.cursor.fetchall()]
 
     def get_all_songs(self) -> List[Song]:
-        self.cursor.execute('SELECT * FROM Songs ORDER BY number_calls')
-        return [Song(*item) for item in self.cursor.fetchall()]
+        with lock:
+            self.cursor.execute('SELECT * FROM Songs ORDER BY number_calls')
+            return [Song(*item) for item in self.cursor.fetchall()]
 
     def get_song_by_name(self, song_name) -> List[Song]:
-        self.cursor.execute('SELECT * FROM Songs WHERE group_name = ?', (song_name,))
-        return [Song(*item) for item in self.cursor.fetchall()]
+        with lock:
+            self.cursor.execute('SELECT * FROM Songs WHERE song_name = ?', (song_name,))
+            return [Song(*item) for item in self.cursor.fetchall()]
 
     def get_song(self, id) -> Song:
-        self.cursor.execute('SELECT * FROM Songs WHERE id = ?', (id,))
-        return [Song(*item) for item in self.cursor.fetchall()][0]
+        with lock:
+            self.cursor.execute('SELECT * FROM Songs WHERE id = ?', (id,))
+            return [Song(*item) for item in self.cursor.fetchall()][0]
 
     def get_users(self) -> List[User]:
-        self.cursor.execute('SELECT * FROM Users')
-        return [User(*item) for item in self.cursor.fetchall()]
+        with lock:
+            self.cursor.execute('SELECT * FROM Users')
+            return [User(*item) for item in self.cursor.fetchall()]
 
     def get_prices(self) -> List[PayButton]:
         """return list of buttons where buttons[i][0] - number of calls, numbers[i][1] price for this number"""
@@ -191,22 +220,25 @@ class Table:
     def get_admin_id(self) -> int:
         return ADMIN_ID
 
-    def get_start_msg(self) ->str:
+    def get_start_msg(self) -> str:
         return Menu.start_msg
 
     def get_songs(self, group: str, category: str) -> List[Song]:
-        self.cursor.execute('SELECT * FROM Songs WHERE group_name = ? and category_name = ?', (group, category))
-        return [Song(*item) for item in self.cursor.fetchall()]
+        with lock:
+            self.cursor.execute('SELECT * FROM Songs WHERE group_name = ? and category_name = ?', (group, category))
+            return [Song(*item) for item in self.cursor.fetchall()]
 
-    def remove_song(self, id):
-        sql = 'DELETE FROM Songs WHERE id = ?'
-        self.cursor.execute(sql, (id,))
-        self.conn.commit()
+    def remove_song(self, song):
+        with lock:
+            sql = 'DELETE FROM Songs WHERE id = ?'
+            self.cursor.execute(sql, (song.id,))
+            self.conn.commit()
 
     def delete_category(self, group, category):
-        sql = 'DELETE FROM Songs WHERE group_name = ? and category_name = ?'
-        self.cursor.execute(sql, (group, category))
-        self.conn.commit()
+        with lock:
+            sql = 'DELETE FROM Songs WHERE group_name = ? and category_name = ?'
+            self.cursor.execute(sql, (group, category))
+            self.conn.commit()
 
 
 if __name__ == '__main__':
